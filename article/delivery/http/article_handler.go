@@ -30,6 +30,7 @@ func NewArticleHandler(e *echo.Echo, us domain.ArticleUsecase) {
 	e.POST("/articles", handler.Store)
 	e.GET("/articles/:id", handler.GetByID)
 	e.DELETE("/articles/:id", handler.Delete)
+	e.PATCH("/articles", handler.Update)
 }
 
 // FetchArticle will fetch the article based on given params
@@ -95,6 +96,28 @@ func (a *ArticleHandler) Store(c echo.Context) (err error) {
 	}
 
 	return c.JSON(http.StatusCreated, article)
+}
+
+func (a *ArticleHandler) Update(c echo.Context) (err error) {
+	var article domain.Article
+	err = c.Bind(&article)
+	if err != nil {
+		return c.JSON(http.StatusUnprocessableEntity, err.Error())
+	}
+
+	// Validate the update request if necessary
+	var ok bool
+	if ok, err = isRequestValid(&article); !ok {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
+	ctx := c.Request().Context()
+	err = a.AUsecase.Update(ctx, &article)
+	if err != nil {
+		return c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, article)
 }
 
 // Delete will delete article by given param

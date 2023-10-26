@@ -4,18 +4,18 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"net/url"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	// "github.com/go-sql-driver/mysql" // Import MySQL driver package
 	"github.com/labstack/echo"
+	_ "github.com/lib/pq" // Import PostgreSQL driver package
 	"github.com/spf13/viper"
 
 	_articleHttpDelivery "github.com/bxcodec/go-clean-arch/article/delivery/http"
 	_articleHttpDeliveryMiddleware "github.com/bxcodec/go-clean-arch/article/delivery/http/middleware"
-	_articleRepo "github.com/bxcodec/go-clean-arch/article/repository/mysql"
+	_articleRepo "github.com/bxcodec/go-clean-arch/article/repository/postgres" // Update the article repository import
 	_articleUcase "github.com/bxcodec/go-clean-arch/article/usecase"
-	_authorRepo "github.com/bxcodec/go-clean-arch/author/repository/mysql"
+	_authorRepo "github.com/bxcodec/go-clean-arch/author/repository/postgres" // Update the author repository import
 )
 
 func init() {
@@ -36,12 +36,16 @@ func main() {
 	dbUser := viper.GetString(`database.user`)
 	dbPass := viper.GetString(`database.pass`)
 	dbName := viper.GetString(`database.name`)
-	connection := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbUser, dbPass, dbHost, dbPort, dbName)
-	val := url.Values{}
-	val.Add("parseTime", "1")
-	val.Add("loc", "Asia/Jakarta")
-	dsn := fmt.Sprintf("%s?%s", connection, val.Encode())
-	dbConn, err := sql.Open(`mysql`, dsn)
+
+	// Construct the PostgreSQL connection string
+	connection := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPass, dbName,
+	)
+
+	dbConn, err := sql.Open(`postgres`, connection)
+
+	log.Print(dbConn)
 
 	if err != nil {
 		log.Fatal(err)
@@ -61,12 +65,12 @@ func main() {
 	e := echo.New()
 	middL := _articleHttpDeliveryMiddleware.InitMiddleware()
 	e.Use(middL.CORS)
-	authorRepo := _authorRepo.NewMysqlAuthorRepository(dbConn)
-	ar := _articleRepo.NewMysqlArticleRepository(dbConn)
+	authorRepo := _authorRepo.NewPostgresAuthorRepository(dbConn)    // Update the author repository creation
+	articleRepo := _articleRepo.NewPostgresArticleRepository(dbConn) // Update the article repository creation
 
 	timeoutContext := time.Duration(viper.GetInt("context.timeout")) * time.Second
-	au := _articleUcase.NewArticleUsecase(ar, authorRepo, timeoutContext)
-	_articleHttpDelivery.NewArticleHandler(e, au)
+	articleUsecase := _articleUcase.NewArticleUsecase(articleRepo, authorRepo, timeoutContext)
+	_articleHttpDelivery.NewArticleHandler(e, articleUsecase)
 
-	log.Fatal(e.Start(viper.GetString("server.address"))) //nolint
+	log.Fatal(e.Start(viper.GetString("server.address")))
 }
